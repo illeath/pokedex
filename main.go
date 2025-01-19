@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -54,6 +53,11 @@ func getCommands() map[string]cliCommand {
 			description: "finds the next 20 locations",
 			callback:    commandMap,
 		},
+		"mapb": {
+			name:        "mapb",
+			description: "shows the previous 20 locations",
+			callback:    commandMapB,
+		},
 	}
 }
 
@@ -81,13 +85,13 @@ func commandMap(config *config) error {
 
 	res, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error making GET request: %w", err)
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error reading response body: %w", err)
 	}
 	if res.StatusCode > 299 {
 		return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
@@ -95,7 +99,47 @@ func commandMap(config *config) error {
 
 	var data LocationResponse
 	if err := json.Unmarshal(body, &data); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error unmarshaling json: %v", err)
+	}
+	for _, location := range data.Results {
+		fmt.Println(location.Name)
+	}
+	if data.Next != nil {
+		config.next = *data.Next
+	} else {
+		config.next = ""
+	}
+	if data.Previous != nil {
+		config.previous = *data.Previous
+	} else {
+		config.previous = ""
+	}
+	return nil
+}
+
+func commandMapB(config *config) error {
+	if config.previous == "" {
+		fmt.Println("you're on the first page")
+		return nil
+	}
+	url := config.previous
+	res, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("error making GET request: %w", err)
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+	if res.StatusCode > 299 {
+		return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
+	}
+
+	var data LocationResponse
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("error unmarshaling json: %v", err)
 	}
 	for _, location := range data.Results {
 		fmt.Println(location.Name)
