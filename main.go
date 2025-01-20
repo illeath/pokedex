@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/illeath/pokedex/internal/pokecache"
 )
 
 func cleanInput(text string) []string {
@@ -26,6 +29,7 @@ type cliCommand struct {
 type config struct {
 	next     string
 	previous string
+	cache    *pokecache.Cache
 }
 
 type LocationResponse struct {
@@ -82,21 +86,25 @@ func commandMap(config *config) error {
 	if url == "" {
 		url = "https://pokeapi.co/api/v2/location-area/"
 	}
+	var body []byte
+	if cachedData, ok := config.cache.Get(url); ok {
+		body = cachedData
+	} else {
+		res, err := http.Get(url)
+		if err != nil {
+			return fmt.Errorf("error making GET request: %w", err)
+		}
+		defer res.Body.Close()
 
-	res, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("error making GET request: %w", err)
+		body, err = io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response body: %w", err)
+		}
+		if res.StatusCode > 299 {
+			return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
+		}
+		config.cache.Add(url, body)
 	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-	if res.StatusCode > 299 {
-		return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
-	}
-
 	var data LocationResponse
 	if err := json.Unmarshal(body, &data); err != nil {
 		return fmt.Errorf("error unmarshaling json: %v", err)
@@ -123,18 +131,24 @@ func commandMapB(config *config) error {
 		return nil
 	}
 	url := config.previous
-	res, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("error making GET request: %w", err)
-	}
-	defer res.Body.Close()
+	var body []byte
+	if cachedData, ok := config.cache.Get(url); ok {
+		body = cachedData
+	} else {
+		res, err := http.Get(url)
+		if err != nil {
+			return fmt.Errorf("error making GET request: %w", err)
+		}
+		defer res.Body.Close()
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-	if res.StatusCode > 299 {
-		return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
+		body, err = io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response body: %w", err)
+		}
+		if res.StatusCode > 299 {
+			return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
+		}
+		config.cache.Add(url, body)
 	}
 
 	var data LocationResponse
@@ -163,6 +177,7 @@ func main() {
 	myConfig := &config{
 		next:     "",
 		previous: "",
+		cache:    pokecache.NewCache(5 * time.Minute),
 	}
 	for {
 		fmt.Printf("Pokedex > ")
