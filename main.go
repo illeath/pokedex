@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -30,6 +31,7 @@ type config struct {
 	next     string
 	previous string
 	cache    *pokecache.Cache
+	Pokedex  map[string]Pokemon
 }
 
 type LocationResponse struct {
@@ -46,6 +48,20 @@ type LocationArea struct {
 			Name string `json:"name"`
 		} `json:"pokemon"`
 	} `json:"pokemon_encounters"`
+}
+
+type Pokemon struct {
+	Name            string   `json:"name"`
+	Base_experience int      `json:"base_experience"`
+	Type            string   `json:"type"`
+	Order           int      `json:"order"`
+	Moves           []string `json:"moves"`
+	Base_stat       int      `json:"base_stat"`
+}
+
+type PokemonEncounters struct {
+	Name            string `json:"name"`
+	Base_experience int    `json:"base_experience"`
 }
 
 func getCommands() map[string]cliCommand {
@@ -74,6 +90,11 @@ func getCommands() map[string]cliCommand {
 			name:        "explore",
 			description: "explores the area",
 			callback:    commandExplore,
+		},
+		"catch": {
+			name:        "catch",
+			description: "attempts to catch a pokemon",
+			callback:    commandCatch,
 		},
 	}
 }
@@ -218,6 +239,65 @@ func commandExplore(input string, config *config) error {
 	fmt.Printf("Found Pokemon:\n")
 	for _, location := range data.PokemonEncounters {
 		fmt.Printf(" - %v\n", location.Pokemon.Name)
+	}
+	return nil
+}
+
+func commandCatch(input string, config *config) error {
+	Pokedex := make(map[string]Pokemon)
+	parts := strings.Fields(input)
+	if len(parts) < 2 {
+		return fmt.Errorf("error: 'catch' command must include a Pokémon name")
+	}
+	pokemonName := strings.ToLower(strings.TrimSpace(parts[1]))
+	if pokemonName == "" {
+		return fmt.Errorf("error: Pokémon name cannot be empty")
+	}
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", pokemonName)
+	fmt.Println("Request URL:", url)
+	if input == "" || strings.TrimSpace(input) == "" {
+		return fmt.Errorf("error: Pokemon name cannot be empty")
+	}
+	var body []byte
+	if cachedData, ok := config.cache.Get(url); ok {
+		body = cachedData
+	} else {
+		res, err := http.Get(url)
+		if err != nil {
+			return fmt.Errorf("error making GET request: %w", err)
+		}
+		defer res.Body.Close()
+
+		body, err = io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("error reading response body: %w", err)
+		}
+		if res.StatusCode == 404 {
+			return fmt.Errorf("pokemon not found: %s", input)
+		} else if res.StatusCode > 299 {
+			return fmt.Errorf("response failed with status code: %d and\nbody: %s", res.StatusCode, body)
+		}
+		config.cache.Add(url, body)
+	}
+	var data PokemonEncounters
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("error unmarshaling json: %v", err)
+	}
+	fmt.Printf("Throwing a Pokeball at %v...\n", data.Name)
+	chanceToCatch := 100 - data.Base_experience
+	captured := rand.Intn(100) < chanceToCatch
+	if captured {
+		if _, exists := config.Pokedex[data.Name]; exists {
+			fmt.Println("You already caught this Pokémon!")
+		} else {
+			fmt.Println("Pokemon caught")
+			Pokedex[data.Name] = Pokemon{
+				Name:            data.Name,
+				Base_experience: data.Base_experience,
+			}
+		}
+	} else {
+		fmt.Printf("You failed to capture the pokemon")
 	}
 	return nil
 }
