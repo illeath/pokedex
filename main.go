@@ -116,6 +116,11 @@ func getCommands() map[string]cliCommand {
 			description: "inspects a caught pokemon",
 			callback:    commandInspect,
 		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "shows the pokedex",
+			callback:    commandPokedex,
+		},
 	}
 }
 
@@ -331,6 +336,18 @@ func commandCatch(input string, config *config) error {
 		}
 	} else {
 		fmt.Printf("You failed to capture the pokemon")
+	}
+	return nil
+}
+
+func commandPokedex(input string, config *config) error {
+	if len(config.Pokedex) == 0 {
+		fmt.Println("Pokedex is empty")
+	} else {
+		fmt.Println("Pokedex:")
+		for _, pokemon := range config.Pokedex {
+			fmt.Printf(" - %v\n", pokemon.Name)
+		}
 	}
 	return nil
 }
