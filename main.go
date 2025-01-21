@@ -52,16 +52,31 @@ type LocationArea struct {
 
 type Pokemon struct {
 	Name            string   `json:"name"`
-	Base_experience int      `json:"base_experience"`
-	Type            string   `json:"type"`
-	Order           int      `json:"order"`
+	Types           []string `json:"types"`
 	Moves           []string `json:"moves"`
-	Base_stat       int      `json:"base_stat"`
+	Base_experience int      `json:"base_experience"`
+	Stats           []int    `json:"stats"`
+	Order           int      `json:"order"`
+	Weight          int      `json:"weight"`
+	Height          int      `json:"height"`
 }
 
 type PokemonEncounters struct {
 	Name            string `json:"name"`
 	Base_experience int    `json:"base_experience"`
+	Height          int    `json:"height"`
+	Weight          int    `json:"weight"`
+	Types           []struct {
+		Type struct {
+			Name string `json:"name"`
+		} `json:"type"`
+	} `json:"types"`
+	Stats []struct {
+		BaseStat int `json:"base_stat"`
+		Stat     struct {
+			Name string `json:"name"`
+		} `json:"stat"`
+	} `json:"stats"`
 }
 
 func getCommands() map[string]cliCommand {
@@ -95,6 +110,11 @@ func getCommands() map[string]cliCommand {
 			name:        "catch",
 			description: "attempts to catch a pokemon",
 			callback:    commandCatch,
+		},
+		"inspect": {
+			name:        "inspect",
+			description: "inspects a caught pokemon",
+			callback:    commandInspect,
 		},
 	}
 }
@@ -244,7 +264,9 @@ func commandExplore(input string, config *config) error {
 }
 
 func commandCatch(input string, config *config) error {
-	Pokedex := make(map[string]Pokemon)
+	if config.Pokedex == nil {
+		config.Pokedex = make(map[string]Pokemon)
+	}
 	parts := strings.Fields(input)
 	if len(parts) < 2 {
 		return fmt.Errorf("error: 'catch' command must include a Pokémon name")
@@ -254,7 +276,6 @@ func commandCatch(input string, config *config) error {
 		return fmt.Errorf("error: Pokémon name cannot be empty")
 	}
 	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", pokemonName)
-	fmt.Println("Request URL:", url)
 	if input == "" || strings.TrimSpace(input) == "" {
 		return fmt.Errorf("error: Pokemon name cannot be empty")
 	}
@@ -291,13 +312,55 @@ func commandCatch(input string, config *config) error {
 			fmt.Println("You already caught this Pokémon!")
 		} else {
 			fmt.Println("Pokemon caught")
-			Pokedex[data.Name] = Pokemon{
+			types := make([]string, len(data.Types))
+			for i, t := range data.Types {
+				types[i] = t.Type.Name
+			}
+			stats := make([]int, len(data.Stats))
+			for i, s := range data.Stats {
+				stats[i] = s.BaseStat
+			}
+			config.Pokedex[data.Name] = Pokemon{
 				Name:            data.Name,
 				Base_experience: data.Base_experience,
+				Height:          data.Height,
+				Weight:          data.Weight,
+				Types:           types,
+				Stats:           stats,
 			}
 		}
 	} else {
 		fmt.Printf("You failed to capture the pokemon")
+	}
+	return nil
+}
+
+func commandInspect(input string, config *config) error {
+	parts := strings.Fields(input)
+	if len(parts) < 2 {
+		return fmt.Errorf("error: 'catch' command must include a Pokémon name")
+	}
+	pokemonName := strings.ToLower(strings.TrimSpace(parts[1]))
+	if pokemonName == "" {
+		return fmt.Errorf("error: Pokémon name cannot be empty")
+	}
+	if pokemon, ok := config.Pokedex[pokemonName]; !ok {
+		fmt.Printf("Pokemon hasn't been caught")
+	} else {
+		fmt.Printf("Name: %v\n", pokemon.Name)
+		fmt.Printf("Height: %v\n", pokemon.Height)
+		fmt.Printf("Weight: %v\n", pokemon.Weight)
+		fmt.Printf("Stats:\n")
+		fmt.Printf("  -hp: %v\n", pokemon.Stats[0])
+		fmt.Printf("  -attack: %v\n", pokemon.Stats[1])
+		fmt.Printf("  -defense: %v\n", pokemon.Stats[2])
+		fmt.Printf("  -special-attack: %v\n", pokemon.Stats[3])
+		fmt.Printf("  -special-defense: %v\n", pokemon.Stats[4])
+		fmt.Printf("  -speed: %v\n", pokemon.Stats[5])
+		fmt.Printf("Types:\n")
+		for _, t := range pokemon.Types {
+			fmt.Printf("  - %v\n", t)
+		}
 	}
 	return nil
 }
